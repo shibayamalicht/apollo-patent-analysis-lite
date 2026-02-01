@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>APOLLO Lite v1.0.0</title>
+    <meta name="description" content="APOLLO Lite - ブラウザで動作する特許マップ簡易作成ツール">
+    <meta name="author" content="しばやま">
+    <link rel="stylesheet" href="https://pyscript.net/releases/2024.1.1/core.css">
+    <script type="module" src="https://pyscript.net/releases/2024.1.1/core.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #003366;
+            --primary-light: #004080;
+            --accent-color: #0066cc;
+            --bg-color: #ffffff;
+            --bg-secondary: #f8f9fa;
+            --text-color: #333333;
+            --text-light: #666666;
+            --border-color: #e0e0e0;
+            --success-color: #28a745;
+            --error-color: #dc3545;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--bg-secondary);
+            color: var(--text-color);
+            line-height: 1.6;
+        }
+        .header {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 100%);
+            color: white;
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header h1 { font-size: 1.8rem; font-weight: 700; }
+        .header p { font-size: 0.9rem; opacity: 0.9; margin-top: 0.25rem; }
+        .loading-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.95);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 9999;
+        }
+        .loading-overlay.hidden { display: none; }
+        .loading-spinner {
+            width: 50px; height: 50px;
+            border: 4px solid var(--border-color); border-top-color: var(--primary-color);
+            border-radius: 50%; animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-text { margin-top: 1rem; color: var(--text-light); font-size: 0.95rem; }
+        .main-container { max-width: 1400px; margin: 0 auto; padding: 1.5rem; }
+        .tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+        .tab-btn {
+            padding: 0.75rem 1.25rem; border: none; background: white; color: var(--text-color);
+            font-size: 0.9rem; font-weight: 500; cursor: pointer;
+            border-radius: 8px 8px 0 0; border: 1px solid var(--border-color); border-bottom: none;
+            transition: all 0.2s;
+        }
+        .tab-btn:hover { background: var(--bg-secondary); }
+        .tab-btn.active { background: var(--primary-color); color: white; border-color: var(--primary-color); }
+        .tab-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .tab-content {
+            display: none; background: white; border-radius: 0 8px 8px 8px;
+            padding: 1.5rem; box-shadow: 0 2px 10px rgba(0,0,0,0.05); border: 1px solid var(--border-color);
+        }
+        .tab-content.active { display: block; }
+        .card { background: white; border-radius: 8px; padding: 1.5rem; margin-bottom: 1rem; border: 1px solid var(--border-color); }
+        .card-title { font-size: 1.1rem; font-weight: 600; color: var(--primary-color); margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid var(--bg-secondary); }
+        .form-group { margin-bottom: 1rem; }
+        .form-label { display: block; font-weight: 500; margin-bottom: 0.5rem; color: var(--text-color); }
+        .form-label .required { color: var(--error-color); margin-left: 0.25rem; }
+        .form-label .optional { color: var(--text-light); font-weight: normal; font-size: 0.85rem; margin-left: 0.5rem; }
+        select, input[type="text"], input[type="number"] {
+            width: 100%; padding: 0.6rem 0.8rem; border: 1px solid var(--border-color);
+            border-radius: 6px; font-size: 0.95rem; transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        select:focus, input:focus { outline: none; border-color: var(--accent-color); box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1); }
+        .btn {
+            padding: 0.6rem 1.2rem; border: none; border-radius: 6px; font-size: 0.95rem; font-weight: 500;
+            cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 0.5rem;
+        }
+        .btn-primary { background: var(--primary-color); color: white; }
+        .btn-primary:hover { background: var(--primary-light); }
+        .btn-secondary { background: var(--bg-secondary); color: var(--text-color); border: 1px solid var(--border-color); }
+        .btn-secondary:hover { background: var(--border-color); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .file-upload-area {
+            border: 2px dashed var(--border-color); border-radius: 8px; padding: 2rem; text-align: center;
+            cursor: pointer; transition: all 0.2s; background: var(--bg-secondary);
+        }
+        .file-upload-area:hover { border-color: var(--accent-color); background: rgba(0, 102, 204, 0.05); }
+        .file-upload-area.dragover { border-color: var(--accent-color); background: rgba(0, 102, 204, 0.1); }
+        .file-upload-icon { font-size: 3rem; margin-bottom: 1rem; }
+        .file-upload-text { color: var(--text-light); }
+        #file-input { display: none; }
+        .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; }
+        .grid-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1rem; }
+        @media (max-width: 768px) { .grid-2, .grid-5 { grid-template-columns: 1fr; } }
+        .analysis-layout { display: grid; grid-template-columns: 280px 1fr; gap: 1.5rem; }
+        @media (max-width: 992px) { .analysis-layout { grid-template-columns: 1fr; } }
+        .settings-panel { background: var(--bg-secondary); border-radius: 8px; padding: 1rem; }
+        .chart-area { background: white; border-radius: 8px; padding: 1rem; min-height: 500px; border: 1px solid var(--border-color); }
+        .data-preview { margin-top: 1.5rem; overflow-x: auto; max-height: 300px; }
+        .data-preview table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .data-preview th, .data-preview td { padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid var(--border-color); white-space: nowrap; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
+        .data-preview th { background: var(--bg-secondary); font-weight: 600; color: var(--primary-color); position: sticky; top: 0; }
+        .data-preview tbody tr:hover { background: var(--bg-secondary); }
+        .status-message { padding: 1rem; border-radius: 6px; margin-bottom: 1rem; }
+        .status-success { background: rgba(40, 167, 69, 0.1); color: var(--success-color); border: 1px solid var(--success-color); }
+        .status-error { background: rgba(220, 53, 69, 0.1); color: var(--error-color); border: 1px solid var(--error-color); }
+        .mapping-section { margin-top: 1.5rem; }
+        .mapping-section h3 { font-size: 1rem; color: var(--primary-color); margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border-color); }
+        .info-box { background: #e3f2fd; border-left: 4px solid var(--accent-color); padding: 1rem; margin-bottom: 1rem; border-radius: 0 6px 6px 0; font-size: 0.9rem; }
+        .detail-panel { margin-top: 1rem; background: var(--bg-secondary); border-radius: 8px; padding: 1rem; border: 1px solid var(--border-color); }
+        .detail-panel h4 { color: var(--primary-color); margin-bottom: 0.5rem; font-size: 1rem; }
+        .detail-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+        .detail-table-wrapper { max-height: 400px; overflow-y: auto; }
+        .detail-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .detail-table th, .detail-table td { padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border-color); }
+        .detail-table th { background: white; font-weight: 600; color: var(--primary-color); position: sticky; top: 0; }
+        .detail-table tbody tr:hover { background: white; }
+        .detail-table td { max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .checkbox-group { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+        .checkbox-group input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
+        .checkbox-group label { cursor: pointer; font-size: 0.9rem; }
+        .footer { text-align: center; padding: 2rem; color: var(--text-light); font-size: 0.85rem; }
+        .hidden { display: none !important; }
+        .mt-1 { margin-top: 0.5rem; }
+        .mt-2 { margin-top: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="loading-overlay" id="loading-overlay">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">APOLLO Lite を起動中...</div>
+        <div class="loading-text" style="font-size: 0.8rem; margin-top: 0.5rem;">初回読み込みには30秒〜1分程度かかる場合があります</div>
+    </div>
+
+    <header class="header">
+        <h1>🚀 APOLLO Lite</h1>
+        <p>特許マップ簡易作成ツール</p>
+    </header>
+
+    <main class="main-container">
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="data" id="tab-btn-data">📁 データ読込</button>
+            <button class="tab-btn" data-tab="timeline" id="tab-btn-timeline" disabled>📈 時系列</button>
+            <button class="tab-btn" data-tab="applicant" id="tab-btn-applicant" disabled>👥 出願人</button>
+            <button class="tab-btn" data-tab="ipc" id="tab-btn-ipc" disabled>🏷️ IPC</button>
+            <button class="tab-btn" data-tab="matrix" id="tab-btn-matrix" disabled>🔥 マトリクス</button>
+            <button class="tab-btn" data-tab="treemap" id="tab-btn-treemap" disabled>🌳 ツリーマップ</button>
+            <button class="tab-btn" data-tab="lifecycle" id="tab-btn-lifecycle" disabled>🔄 ライフサイクル</button>
+        </div>
+
+        <div class="tab-content active" id="tab-data">
+            <div class="card">
+                <h2 class="card-title">📁 CSVファイルの読み込み</h2>
+                <div class="file-upload-area" id="file-upload-area">
+                    <div class="file-upload-icon">📄</div>
+                    <div class="file-upload-text">
+                        <p><strong>クリックしてCSVファイルを選択</strong></p>
+                        <p>またはファイルをここにドラッグ＆ドロップ</p>
+                    </div>
+                    <input type="file" id="file-input" accept=".csv">
+                </div>
+                <div id="file-status" class="mt-2"></div>
+            </div>
+            <div class="card hidden" id="mapping-card">
+                <h2 class="card-title">⚙️ カラム設定</h2>
+                <div class="form-group">
+                    <label class="form-label">区切り文字（複数値がある場合）</label>
+                    <input type="text" id="delimiter-input" value=";" style="width: 100px;">
+                </div>
+                <div class="mapping-section">
+                    <h3>必須項目</h3>
+                    <div class="grid-2">
+                        <div class="form-group"><label class="form-label">出願日/公開日 <span class="required">*</span></label><select id="map-date"></select></div>
+                        <div class="form-group"><label class="form-label">出願人 <span class="required">*</span></label><select id="map-applicant"></select></div>
+                        <div class="form-group"><label class="form-label">IPC分類 <span class="required">*</span></label><select id="map-ipc"></select></div>
+                        <div class="form-group"><label class="form-label">発明の名称 <span class="required">*</span></label><select id="map-title"></select></div>
+                    </div>
+                </div>
+                <div class="mapping-section">
+                    <h3>任意項目</h3>
+                    <div class="grid-5">
+                        <div class="form-group"><label class="form-label">出願番号 <span class="optional">(任意)</span></label><select id="map-app-number"></select></div>
+                        <div class="form-group"><label class="form-label">技術分類 <span class="optional">(任意)</span></label><select id="map-tech-class"></select></div>
+                        <div class="form-group"><label class="form-label">課題分類 <span class="optional">(任意)</span></label><select id="map-problem-class"></select></div>
+                        <div class="form-group"><label class="form-label">解決手段分類 <span class="optional">(任意)</span></label><select id="map-solution-class"></select></div>
+                        <div class="form-group"><label class="form-label">ステータス <span class="optional">(任意)</span></label><select id="map-status"></select></div>
+                    </div>
+                </div>
+                <button class="btn btn-primary mt-2" id="btn-apply-mapping">✅ 設定を適用して分析開始</button>
+            </div>
+            <div class="card hidden" id="preview-card">
+                <h2 class="card-title">📋 データプレビュー</h2>
+                <div id="data-summary"></div>
+                <div class="data-preview" id="data-preview"></div>
+            </div>
+        </div>
+
+        <div class="tab-content" id="tab-timeline">
+            <div class="analysis-layout">
+                <div class="settings-panel">
+                    <h3 class="card-title">設定</h3>
+                    <div class="form-group"><label class="form-label">グラフ種類</label>
+                        <select id="timeline-chart-type"><option value="bar">棒グラフ</option><option value="line">折れ線グラフ</option></select>
+                    </div>
+                    <div class="form-group"><label class="form-label">開始年</label><select id="timeline-start-year"></select></div>
+                    <div class="form-group"><label class="form-label">終了年</label><select id="timeline-end-year"></select></div>
+                    <div id="timeline-status-option" class="hidden">
+                        <div class="checkbox-group"><input type="checkbox" id="timeline-use-status"><label for="timeline-use-status">ステータス内訳を表示</label></div>
+                    </div>
+                    <button class="btn btn-primary" id="btn-draw-timeline" style="width: 100%;">📊 グラフ描画</button>
+                    <button class="btn btn-secondary mt-1" id="btn-save-timeline" style="width: 100%;">📸 画像保存</button>
+                </div>
+                <div class="chart-area" id="chart-timeline"></div>
+            </div>
+        </div>
+
+        <div class="tab-content" id="tab-applicant">
+            <div class="analysis-layout">
+                <div class="settings-panel">
+                    <h3 class="card-title">設定</h3>
+                    <div class="form-group"><label class="form-label">表示件数 (Top N)</label>
+                        <select id="applicant-top-n"><option value="5">Top 5</option><option value="10" selected>Top 10</option><option value="15">Top 15</option><option value="20">Top 20</option><option value="30">Top 30</option></select>
+                    </div>
+                    <div class="form-group"><label class="form-label">開始年</label><select id="applicant-start-year"></select></div>
+                    <div class="form-group"><label class="form-label">終了年</label><select id="applicant-end-year"></select></div>
+                    <div id="applicant-status-option" class="hidden">
+                        <div class="checkbox-group"><input type="checkbox" id="applicant-use-status"><label for="applicant-use-status">ステータス内訳を表示</label></div>
+                    </div>
+                    <button class="btn btn-primary" id="btn-draw-applicant" style="width: 100%;">📊 グラフ描画</button>
+                    <button class="btn btn-secondary mt-1" id="btn-save-applicant" style="width: 100%;">📸 画像保存</button>
+                    <div class="info-box mt-2" style="font-size: 0.8rem;">💡 バーをクリックすると該当する公報リストが表示されます</div>
+                </div>
+                <div>
+                    <div class="chart-area" id="chart-applicant"></div>
+                    <div id="applicant-detail" class="detail-panel hidden">
+                        <div class="detail-header">
+                            <h4 id="applicant-detail-title">公報リスト</h4>
+                            <div class="checkbox-group"><input type="checkbox" id="applicant-show-all"><label for="applicant-show-all">全件表示</label></div>
+                        </div>
+                        <div class="detail-table-wrapper" id="applicant-detail-content"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-content" id="tab-ipc">
+            <div class="analysis-layout">
+                <div class="settings-panel">
+                    <h3 class="card-title">設定</h3>
+                    <div class="form-group"><label class="form-label">IPC階層</label>
+                        <select id="ipc-level"><option value="subclass">サブクラス (例: A01B)</option><option value="maingroup">メイングループ (例: A01B1/00)</option></select>
+                    </div>
+                    <div class="form-group"><label class="form-label">表示件数 (Top N)</label>
+                        <select id="ipc-top-n"><option value="5">Top 5</option><option value="10" selected>Top 10</option><option value="15">Top 15</option><option value="20">Top 20</option><option value="30">Top 30</option></select>
+                    </div>
+                    <div class="form-group"><label class="form-label">開始年</label><select id="ipc-start-year"></select></div>
+                    <div class="form-group"><label class="form-label">終了年</label><select id="ipc-end-year"></select></div>
+                    <button class="btn btn-primary" id="btn-draw-ipc" style="width: 100%;">📊 グラフ描画</button>
+                    <button class="btn btn-secondary mt-1" id="btn-save-ipc" style="width: 100%;">📸 画像保存</button>
+                </div>
+                <div class="chart-area" id="chart-ipc"></div>
+            </div>
+        </div>
+
+        <div class="tab-content" id="tab-matrix">
+            <div class="analysis-layout">
+                <div class="settings-panel">
+                    <h3 class="card-title">設定</h3>
+                    <div class="form-group"><label class="form-label">X軸（横軸）</label><select id="matrix-x-axis"></select></div>
+                    <div class="form-group"><label class="form-label">Y軸（縦軸）</label><select id="matrix-y-axis"></select></div>
+                    <div class="form-group"><label class="form-label">グラフ種類</label>
+                        <select id="matrix-chart-type"><option value="heatmap">ヒートマップ</option><option value="bubble">バブルチャート</option></select>
+                    </div>
+                    <div class="form-group"><label class="form-label">表示件数 (各軸 Top N)</label>
+                        <select id="matrix-top-n"><option value="5">Top 5</option><option value="10" selected>Top 10</option><option value="15">Top 15</option><option value="20">Top 20</option></select>
+                    </div>
+                    <div class="form-group"><label class="form-label">開始年</label><select id="matrix-start-year"></select></div>
+                    <div class="form-group"><label class="form-label">終了年</label><select id="matrix-end-year"></select></div>
+                    <button class="btn btn-primary" id="btn-draw-matrix" style="width: 100%;">📊 グラフ描画</button>
+                    <button class="btn btn-secondary mt-1" id="btn-save-matrix" style="width: 100%;">📸 画像保存</button>
+                    <div class="info-box mt-2" style="font-size: 0.8rem;">💡 セル/バブルをクリックすると該当する公報リストが表示されます</div>
+                </div>
+                <div>
+                    <div class="chart-area" id="chart-matrix"></div>
+                    <div id="matrix-detail" class="detail-panel hidden">
+                        <div class="detail-header">
+                            <h4 id="matrix-detail-title">公報リスト</h4>
+                            <div class="checkbox-group"><input type="checkbox" id="matrix-show-all"><label for="matrix-show-all">全件表示</label></div>
+                        </div>
+                        <div class="detail-table-wrapper" id="matrix-detail-content"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-content" id="tab-treemap">
+            <div class="analysis-layout">
+                <div class="settings-panel">
+                    <h3 class="card-title">設定</h3>
+                    <div class="form-group"><label class="form-label">表示モード</label>
+                        <select id="treemap-mode"><option value="ipc">IPC階層（技術分野）</option><option value="applicant">出願人シェア</option></select>
+                    </div>
+                    <div class="form-group"><label class="form-label">表示件数（出願人モード）</label>
+                        <select id="treemap-top-n"><option value="10">Top 10</option><option value="20">Top 20</option><option value="30" selected>Top 30</option><option value="50">Top 50</option></select>
+                    </div>
+                    <div class="form-group"><label class="form-label">開始年</label><select id="treemap-start-year"></select></div>
+                    <div class="form-group"><label class="form-label">終了年</label><select id="treemap-end-year"></select></div>
+                    <button class="btn btn-primary" id="btn-draw-treemap" style="width: 100%;">📊 グラフ描画</button>
+                    <button class="btn btn-secondary mt-1" id="btn-save-treemap" style="width: 100%;">📸 画像保存</button>
+                </div>
+                <div class="chart-area" id="chart-treemap"></div>
+            </div>
+        </div>
+
+        <div class="tab-content" id="tab-lifecycle">
+            <div class="analysis-layout">
+                <div class="settings-panel">
+                    <h3 class="card-title">設定</h3>
+                    <div class="info-box"><strong>ライフサイクルマップとは</strong><br>縦軸：出願人数（参入企業数）<br>横軸：出願件数（技術活動量）<br>技術の発展段階を診断します。</div>
+                    <div class="form-group"><label class="form-label">開始年</label><select id="lifecycle-start-year"></select></div>
+                    <div class="form-group"><label class="form-label">終了年</label><select id="lifecycle-end-year"></select></div>
+                    <button class="btn btn-primary" id="btn-draw-lifecycle" style="width: 100%;">📊 グラフ描画</button>
+                    <button class="btn btn-secondary mt-1" id="btn-save-lifecycle" style="width: 100%;">📸 画像保存</button>
+                </div>
+                <div class="chart-area" id="chart-lifecycle">
+                    <div class="info-box"><strong>💡 マップの読み方</strong><br>• <strong>右上へ伸びる</strong>: 成長期（参入増・出願増）<br>• <strong>右下へ向かう</strong>: 成熟期（出願多・参入減）<br>• <strong>左下へ戻る</strong>: 衰退期またはニッチ化</div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="footer"><p>APOLLO Lite v1.0.0 | © 2026 しばやま</p></footer>
+
+    <script type="py" config='{"packages": ["pandas", "numpy"]}'>
+import pandas as pd
+import numpy as np
+import json
+import re
+from pyodide.ffi import create_proxy
+from js import document, window, Plotly, FileReader, JSON
+
+G10_COLORS = ["#3366CC", "#DC3912", "#FF9900", "#109618", "#990099", "#0099C6", "#DD4477", "#66AA00", "#B82E2E", "#316395"]
+PASTEL_COLORS = ["#AEC6CF", "#779ECB", "#B39EB5", "#FFB7B2", "#CFCFC4", "#B0E0E6", "#FFDAC1", "#E2F0CB", "#FDFD96", "#FF6961"]
+
+class AppState:
+    df = None
+    col_map = {}
+    delimiter = ";"
+    year_min = None
+    year_max = None
+    current_applicant_data = None
+    current_matrix_data = None
+    status_available = False
+
+state = AppState()
+
+def to_js(obj):
+    return JSON.parse(json.dumps(obj))
+
+def show_element(el_id):
+    el = document.getElementById(el_id)
+    if el: el.classList.remove("hidden")
+
+def hide_element(el_id):
+    el = document.getElementById(el_id)
+    if el: el.classList.add("hidden")
+
+def set_status(el_id, message, status_type="success"):
+    el = document.getElementById(el_id)
+    if el: el.innerHTML = f'<div class="status-message status-{status_type}">{message}</div>'
+
+def enable_tabs():
+    for tab_id in ["tab-btn-timeline", "tab-btn-applicant", "tab-btn-ipc", "tab-btn-matrix", "tab-btn-treemap", "tab-btn-lifecycle"]:
+        btn = document.getElementById(tab_id)
+        if btn: btn.disabled = False
+
+def populate_select(el_id, options, selected_value=None):
+    el = document.getElementById(el_id)
+    if not el: return
+    el.innerHTML = ""
+    for opt in options:
+        option = document.createElement("option")
+        option.value = str(opt)
+        option.textContent = str(opt)
+        if selected_value is not None and str(opt) == str(selected_value): option.selected = True
+        el.appendChild(option)
+
+def populate_year_selects():
+    if state.year_min is None: return
+    years = list(range(int(state.year_min), int(state.year_max) + 1))
+    for tab in ["timeline", "applicant", "ipc", "matrix", "treemap", "lifecycle"]:
+        populate_select(f"{tab}-start-year", years, state.year_min)
+        populate_select(f"{tab}-end-year", years, state.year_max)
+
+def detect_column(columns, keywords):
+    for kw in keywords:
+        for col in columns:
+            if kw.lower() == col.lower(): return col
+    for kw in keywords:
+        for col in columns:
+            if kw.lower() in col.lower(): return col
+    return None
+
+def auto_detect_mappings(columns):
+    return {
+        "date": detect_column(columns, ["出願日", "公開日", "出願日（国内）", "Date", "Filing", "Publication"]),
+        "applicant": detect_column(columns, ["出願人", "権利者", "Applicant", "Assignee"]),
+        "ipc": detect_column(columns, ["IPC", "国際特許分類", "Int. Cl", "分類"]),
+        "title": detect_column(columns, ["発明の名称", "名称", "Title", "Invention"]),
+        "app_number": detect_column(columns, ["出願番号", "Application", "App. No", "出願No"]),
+        "tech_class": detect_column(columns, ["技術分類", "技術", "Technology", "Tech"]),
+        "problem_class": detect_column(columns, ["課題分類", "課題", "Problem", "Issue"]),
+        "solution_class": detect_column(columns, ["解決手段分類", "解決手段", "Solution", "Means"]),
+        "status": detect_column(columns, ["ステータス", "状態", "Status", "Legal Status", "法的状態"]),
+    }
+
+def populate_mapping_selects(columns, auto_mappings):
+    col_options = ["(未選択)"] + list(columns)
+    for el_id, key in [("map-date", "date"), ("map-applicant", "applicant"), ("map-ipc", "ipc"), ("map-title", "title"),
+                       ("map-app-number", "app_number"), ("map-tech-class", "tech_class"), ("map-problem-class", "problem_class"), 
+                       ("map-solution-class", "solution_class"), ("map-status", "status")]:
+        el = document.getElementById(el_id)
+        if el:
+            el.innerHTML = ""
+            auto_val = auto_mappings.get(key)
+            for col in col_options:
+                option = document.createElement("option")
+                option.value = col
+                option.textContent = col
+                if auto_val and col == auto_val: option.selected = True
+                el.appendChild(option)
+
+def parse_date(date_str):
+    if pd.isna(date_str): return None
+    date_str = str(date_str).strip()
+    for pattern, extractor in [(r"(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})", lambda m: int(m.group(1))),
+                               (r"(\d{4})(\d{2})(\d{2})", lambda m: int(m.group(1))),
+                               (r"(\d{4})[-/](\d{1,2})", lambda m: int(m.group(1))),
+                               (r"^(\d{4})$", lambda m: int(m.group(1)))]:
+        match = re.match(pattern, date_str)
+        if match:
+            try: return extractor(match)
+            except: pass
+    return None
+
+def parse_ipc(ipc_str, level="subclass"):
+    if pd.isna(ipc_str): return []
+    ipc_str = str(ipc_str).upper().strip()
+    results = []
+    main_parts = re.split(r"[;,|]+", ipc_str)
+    for main_part in main_parts:
+        main_part = main_part.strip()
+        if not main_part: continue
+        if level == "subclass":
+            match = re.match(r"([A-H]\d{2}[A-Z])", main_part)
+            if match: 
+                subclass = match.group(1)
+                if subclass not in results:
+                    results.append(subclass)
+        else:
+            match = re.match(r"([A-H]\d{2}[A-Z])\s*(\d+)/(\d+)", main_part)
+            if match:
+                mg = f"{match.group(1)}{match.group(2)}/{match.group(3)}"
+                if mg not in results:
+                    results.append(mg)
+                continue
+            match = re.match(r"([A-H]\d{2}[A-Z])\s+(\d+)", main_part)
+            if match:
+                mg = f"{match.group(1)}{match.group(2)}/00"
+                if mg not in results:
+                    results.append(mg)
+                continue
+            match = re.match(r"([A-H]\d{2}[A-Z])(\d+)(?!/)", main_part)
+            if match:
+                mg = f"{match.group(1)}{match.group(2)}/00"
+                if mg not in results:
+                    results.append(mg)
+                continue
+    return results
+
+def split_values(value, delimiter):
+    if pd.isna(value): return []
+    return [v.strip() for v in str(value).split(delimiter) if v.strip()]
+
+def load_csv_data(content, filename):
+    from io import StringIO
+    try:
+        try: df = pd.read_csv(StringIO(content), dtype=str)
+        except: df = pd.read_csv(StringIO(content), dtype=str, encoding="shift_jis")
+        state.df = df
+        auto_mappings = auto_detect_mappings(df.columns.tolist())
+        populate_mapping_selects(df.columns.tolist(), auto_mappings)
+        show_element("mapping-card")
+        show_element("preview-card")
+        show_data_preview(df)
+        set_status("file-status", f"✅ ファイル読み込み完了: {filename} ({len(df)}件)", "success")
+    except Exception as e:
+        set_status("file-status", f"❌ 読み込みエラー: {str(e)}", "error")
+
+def show_data_preview(df, max_rows=5):
+    summary_el = document.getElementById("data-summary")
+    preview_el = document.getElementById("data-preview")
+    if summary_el: summary_el.innerHTML = f"<p><strong>データ件数:</strong> {len(df)}件 | <strong>カラム数:</strong> {len(df.columns)}</p>"
+    if preview_el:
+        html = "<table><thead><tr>" + "".join([f"<th>{col}</th>" for col in df.columns[:10]]) + "</tr></thead><tbody>"
+        for _, row in df.head(max_rows).iterrows():
+            html += "<tr>" + "".join([f"<td>{str(row[col])[:50] if pd.notna(row[col]) else ''}</td>" for col in df.columns[:10]]) + "</tr>"
+        html += "</tbody></table>"
+        preview_el.innerHTML = html
+
+def apply_mapping(event=None):
+    if state.df is None:
+        set_status("file-status", "❌ データが読み込まれていません", "error")
+        return
+    def get_val(el_id):
+        el = document.getElementById(el_id)
+        return el.value if el and el.value != "(未選択)" else None
+    state.col_map = {
+        "date": get_val("map-date"),
+        "applicant": get_val("map-applicant"),
+        "ipc": get_val("map-ipc"),
+        "title": get_val("map-title"),
+        "app_number": get_val("map-app-number"),
+        "tech_class": get_val("map-tech-class"),
+        "problem_class": get_val("map-problem-class"),
+        "solution_class": get_val("map-solution-class"),
+        "status": get_val("map-status"),
+    }
+    delim_el = document.getElementById("delimiter-input")
+    if delim_el: state.delimiter = delim_el.value or ";"
+    missing = [f for f in ["date", "applicant", "ipc", "title"] if not state.col_map.get(f)]
+    if missing:
+        set_status("file-status", f"❌ 必須項目が未選択です: {', '.join(missing)}", "error")
+        return
+    df = state.df.copy()
+    df["_year"] = df[state.col_map["date"]].apply(parse_date)
+    df = df.dropna(subset=["_year"])
+    df["_year"] = df["_year"].astype(int)
+    state.df = df
+    state.year_min = int(df["_year"].min())
+    state.year_max = int(df["_year"].max())
+    state.status_available = state.col_map.get("status") is not None
+    if state.status_available:
+        show_element("timeline-status-option")
+        show_element("applicant-status-option")
+    else:
+        hide_element("timeline-status-option")
+        hide_element("applicant-status-option")
+    populate_year_selects()
+    populate_matrix_axis_options()
+    enable_tabs()
+    set_status("file-status", f"✅ 設定適用完了！ 分析可能期間: {state.year_min}年 〜 {state.year_max}年 ({len(df)}件)", "success")
+
+def populate_matrix_axis_options():
+    options = [("year", "出願年"), ("applicant", "出願人"), ("ipc", "IPC分類")]
+    if state.col_map.get("tech_class"): options.append(("tech_class", "技術分類"))
+    if state.col_map.get("problem_class"): options.append(("problem_class", "課題分類"))
+    if state.col_map.get("solution_class"): options.append(("solution_class", "解決手段分類"))
+    if state.col_map.get("status"): options.append(("status", "ステータス"))
+    for el_id in ["matrix-x-axis", "matrix-y-axis"]:
+        el = document.getElementById(el_id)
+        if el:
+            el.innerHTML = ""
+            for val, label in options:
+                opt = document.createElement("option")
+                opt.value = val
+                opt.textContent = label
+                el.appendChild(opt)
+    if document.getElementById("matrix-x-axis"): document.getElementById("matrix-x-axis").value = "year"
+    if document.getElementById("matrix-y-axis"): document.getElementById("matrix-y-axis").value = "applicant"
+
+def show_detail_table(container_id, title_id, title_text, records, show_all=False):
+    container = document.getElementById(container_id)
+    title_el = document.getElementById(title_id)
+    content_el = document.getElementById(container_id.replace("-detail", "-detail-content"))
+    if not container or records is None or (hasattr(records, 'empty') and records.empty):
+        hide_element(container_id)
+        return
+    max_rows = len(records) if show_all else 50
+    title_el.textContent = f"{title_text} ({len(records)}件)"
+    has_app_number = state.col_map.get("app_number") is not None
+    if has_app_number:
+        html = '<table class="detail-table"><thead><tr><th>No.</th><th>出願番号</th><th>発明の名称</th><th>出願人</th><th>年</th><th>IPC</th></tr></thead><tbody>'
+    else:
+        html = '<table class="detail-table"><thead><tr><th>No.</th><th>発明の名称</th><th>出願人</th><th>年</th><th>IPC</th></tr></thead><tbody>'
+    for i, (_, row) in enumerate(records.head(max_rows).iterrows()):
+        app_num = ""
+        if has_app_number:
+            app_num = str(row[state.col_map["app_number"]])[:25] if pd.notna(row[state.col_map["app_number"]]) else ""
+        title = str(row[state.col_map["title"]])[:50] if pd.notna(row[state.col_map["title"]]) else ""
+        applicant = str(row[state.col_map["applicant"]])[:30] if pd.notna(row[state.col_map["applicant"]]) else ""
+        year = int(row["_year"]) if pd.notna(row["_year"]) else ""
+        ipc = str(row[state.col_map["ipc"]])[:25] if pd.notna(row[state.col_map["ipc"]]) else ""
+        if has_app_number:
+            html += f'<tr><td>{i+1}</td><td>{app_num}</td><td>{title}</td><td>{applicant}</td><td>{year}</td><td>{ipc}</td></tr>'
+        else:
+            html += f'<tr><td>{i+1}</td><td>{title}</td><td>{applicant}</td><td>{year}</td><td>{ipc}</td></tr>'
+    if len(records) > max_rows and not show_all:
+        colspan = 6 if has_app_number else 5
+        html += f'<tr><td colspan="{colspan}" style="text-align:center;color:#666;">... 他 {len(records) - max_rows} 件（全件表示にチェックを入れてください）</td></tr>'
+    html += '</tbody></table>'
+    content_el.innerHTML = html
+    show_element(container_id)
+
+def draw_timeline(event=None):
+    if state.df is None: return
+    chart_type = document.getElementById("timeline-chart-type").value
+    start_year = int(document.getElementById("timeline-start-year").value)
+    end_year = int(document.getElementById("timeline-end-year").value)
+    use_status = state.status_available and document.getElementById("timeline-use-status").checked
+    df = state.df[(state.df["_year"] >= start_year) & (state.df["_year"] <= end_year)]
+    all_years = list(range(start_year, end_year + 1))
+    years_str = [str(y) for y in all_years]
+    if use_status and state.col_map.get("status"):
+        status_col = state.col_map["status"]
+        statuses = sorted(df[status_col].dropna().unique().astype(str))
+        traces = []
+        for i, status in enumerate(statuses):
+            df_status = df[df[status_col] == status]
+            counts = df_status["_year"].value_counts()
+            y_vals = [int(counts.get(y, 0)) for y in all_years]
+            traces.append({
+                "x": years_str, "y": y_vals, "type": "bar", "name": status,
+                "marker": {"color": PASTEL_COLORS[i % len(PASTEL_COLORS)]},
+                "hovertemplate": f"{status}<br>%{{x}}年<br>%{{y}}件<extra></extra>"
+            })
+        layout = {
+            "title": {"text": f"出願件数の年次推移 ({start_year}年〜{end_year}年)", "font": {"size": 18, "color": "#003366"}},
+            "xaxis": {"title": "出願年", "type": "category"}, "yaxis": {"title": "件数", "rangemode": "tozero"},
+            "barmode": "stack", "plot_bgcolor": "white", "paper_bgcolor": "white",
+            "margin": {"l": 60, "r": 40, "t": 60, "b": 60}, "legend": {"orientation": "h", "y": -0.2}
+        }
+        Plotly.newPlot("chart-timeline", to_js(traces), to_js(layout), to_js({"responsive": True}))
+    else:
+        yearly_counts = df["_year"].value_counts().sort_index()
+        counts = [int(yearly_counts.get(y, 0)) for y in all_years]
+        if chart_type == "bar":
+            trace = {"x": years_str, "y": counts, "type": "bar", "marker": {"color": G10_COLORS[0]}, "hovertemplate": "%{x}年<br>%{y}件<extra></extra>"}
+        else:
+            trace = {"x": years_str, "y": counts, "type": "scatter", "mode": "lines+markers", "line": {"color": G10_COLORS[0], "width": 2}, "marker": {"size": 8, "color": G10_COLORS[0]}, "hovertemplate": "%{x}年<br>%{y}件<extra></extra>"}
+        layout = {
+            "title": {"text": f"出願件数の年次推移 ({start_year}年〜{end_year}年)", "font": {"size": 18, "color": "#003366"}},
+            "xaxis": {"title": "出願年", "type": "category"}, "yaxis": {"title": "件数", "rangemode": "tozero"},
+            "plot_bgcolor": "white", "paper_bgcolor": "white", "margin": {"l": 60, "r": 40, "t": 60, "b": 60}
+        }
+        Plotly.newPlot("chart-timeline", to_js([trace]), to_js(layout), to_js({"responsive": True}))
+
+def save_timeline(event=None):
+    Plotly.downloadImage("chart-timeline", to_js({"format": "png", "filename": "apollo_lite_timeline", "width": 1200, "height": 600}))
+
+def draw_applicant(event=None):
+    if state.df is None: return
+    top_n = int(document.getElementById("applicant-top-n").value)
+    start_year = int(document.getElementById("applicant-start-year").value)
+    end_year = int(document.getElementById("applicant-end-year").value)
+    use_status = state.status_available and document.getElementById("applicant-use-status").checked
+    df = state.df[(state.df["_year"] >= start_year) & (state.df["_year"] <= end_year)]
+    state.current_applicant_data = {"df": df}
+    col = state.col_map["applicant"]
+    applicants_series = df[col].apply(lambda x: split_values(x, state.delimiter)).explode()
+    applicants_series = applicants_series[applicants_series != ""]
+    top_applicants = applicants_series.value_counts().head(top_n).index.tolist()
+    if use_status and state.col_map.get("status"):
+        status_col = state.col_map["status"]
+        statuses = sorted(df[status_col].dropna().unique().astype(str))
+        traces = []
+        for si, status in enumerate(statuses):
+            df_status = df[df[status_col] == status]
+            app_series = df_status[col].apply(lambda x: split_values(x, state.delimiter)).explode()
+            app_series = app_series[app_series != ""]
+            counts = app_series.value_counts()
+            x_vals = [int(counts.get(app, 0)) for app in top_applicants[::-1]]
+            traces.append({
+                "y": top_applicants[::-1], "x": x_vals, "type": "bar", "orientation": "h",
+                "name": status, "marker": {"color": PASTEL_COLORS[si % len(PASTEL_COLORS)]},
+                "hovertemplate": f"{status}<br>%{{y}}<br>%{{x}}件<extra></extra>"
+            })
+        layout = {
+            "title": {"text": f"出願人ランキング (Top {top_n})", "font": {"size": 18, "color": "#003366"}},
+            "xaxis": {"title": "件数"}, "yaxis": {"title": "", "automargin": True, "type": "category"},
+            "barmode": "stack", "plot_bgcolor": "white", "paper_bgcolor": "white",
+            "margin": {"l": 200, "r": 40, "t": 60, "b": 60}, "legend": {"orientation": "h", "y": -0.15}
+        }
+        Plotly.newPlot("chart-applicant", to_js(traces), to_js(layout), to_js({"responsive": True}))
+    else:
+        counts = applicants_series.value_counts().head(top_n)
+        y_vals = counts.index.tolist()[::-1]
+        x_vals = [int(v) for v in counts.values.tolist()[::-1]]
+        trace = {"x": x_vals, "y": y_vals, "type": "bar", "orientation": "h", "marker": {"color": G10_COLORS[0]}, "hovertemplate": "%{y}<br>%{x}件<extra></extra>"}
+        layout = {"title": {"text": f"出願人ランキング (Top {top_n})", "font": {"size": 18, "color": "#003366"}}, "xaxis": {"title": "件数"}, "yaxis": {"title": "", "automargin": True, "type": "category"}, "plot_bgcolor": "white", "paper_bgcolor": "white", "margin": {"l": 200, "r": 40, "t": 60, "b": 60}}
+        Plotly.newPlot("chart-applicant", to_js([trace]), to_js(layout), to_js({"responsive": True}))
+    chart_el = document.getElementById("chart-applicant")
+    def on_click(data):
+        if data.points and len(data.points) > 0: handle_applicant_click(data.points[0].y)
+    chart_el.on("plotly_click", create_proxy(on_click))
+    hide_element("applicant-detail")
+
+def handle_applicant_click(applicant_name):
+    if state.current_applicant_data is None: return
+    df = state.current_applicant_data["df"]
+    col = state.col_map["applicant"]
+    mask = df[col].apply(lambda x: applicant_name in split_values(x, state.delimiter))
+    filtered = df[mask]
+    show_all = document.getElementById("applicant-show-all").checked
+    show_detail_table("applicant-detail", "applicant-detail-title", f"📋 {applicant_name} の公報リスト", filtered, show_all)
+
+def save_applicant(event=None):
+    Plotly.downloadImage("chart-applicant", to_js({"format": "png", "filename": "apollo_lite_applicant", "width": 1200, "height": 600}))
+
+def draw_ipc(event=None):
+    if state.df is None: return
+    top_n = int(document.getElementById("ipc-top-n").value)
+    level = document.getElementById("ipc-level").value
+    start_year = int(document.getElementById("ipc-start-year").value)
+    end_year = int(document.getElementById("ipc-end-year").value)
+    df = state.df[(state.df["_year"] >= start_year) & (state.df["_year"] <= end_year)]
+    col = state.col_map["ipc"]
+    ipcs = df[col].apply(lambda x: parse_ipc(x, level)).explode().dropna()
+    ipcs = ipcs[ipcs != ""]
+    if ipcs.empty:
+        layout = {"title": {"text": "IPC分類ランキング - データがありません", "font": {"size": 18, "color": "#003366"}}, "plot_bgcolor": "white", "paper_bgcolor": "white"}
+        Plotly.newPlot("chart-ipc", to_js([]), to_js(layout), to_js({"responsive": True}))
+        return
+    counts = ipcs.value_counts().head(top_n)
+    y_vals = counts.index.tolist()[::-1]
+    x_vals = [int(v) for v in counts.values.tolist()[::-1]]
+    level_label = "サブクラス" if level == "subclass" else "メイングループ"
+    trace = {"x": x_vals, "y": y_vals, "type": "bar", "orientation": "h", "marker": {"color": G10_COLORS[1]}, "hovertemplate": "%{y}<br>%{x}件<extra></extra>"}
+    layout = {"title": {"text": f"IPC分類ランキング - {level_label} (Top {top_n})", "font": {"size": 18, "color": "#003366"}}, "xaxis": {"title": "件数"}, "yaxis": {"title": "", "automargin": True, "type": "category"}, "plot_bgcolor": "white", "paper_bgcolor": "white", "margin": {"l": 150, "r": 40, "t": 60, "b": 60}}
+    Plotly.newPlot("chart-ipc", to_js([trace]), to_js(layout), to_js({"responsive": True}))
+
+def save_ipc(event=None):
+    Plotly.downloadImage("chart-ipc", to_js({"format": "png", "filename": "apollo_lite_ipc", "width": 1200, "height": 600}))
+
+def get_axis_data(df, axis_type):
+    if axis_type == "year": return df["_year"].astype(str)
+    elif axis_type == "applicant": return df[state.col_map["applicant"]].apply(lambda x: split_values(x, state.delimiter))
+    elif axis_type == "ipc": return df[state.col_map["ipc"]].apply(lambda x: parse_ipc(x, "subclass"))
+    else:
+        col = state.col_map.get(axis_type)
+        if col: return df[col].apply(lambda x: split_values(x, state.delimiter))
+    return pd.Series([[] for _ in range(len(df))])
+
+def draw_matrix(event=None):
+    if state.df is None: return
+    x_axis = document.getElementById("matrix-x-axis").value
+    y_axis = document.getElementById("matrix-y-axis").value
+    chart_type = document.getElementById("matrix-chart-type").value
+    top_n = int(document.getElementById("matrix-top-n").value)
+    start_year = int(document.getElementById("matrix-start-year").value)
+    end_year = int(document.getElementById("matrix-end-year").value)
+    df = state.df[(state.df["_year"] >= start_year) & (state.df["_year"] <= end_year)].copy()
+    state.current_matrix_data = {"df": df, "x_axis": x_axis, "y_axis": y_axis}
+    x_data = get_axis_data(df, x_axis)
+    y_data = get_axis_data(df, y_axis)
+    x_is_year = (x_axis == "year")
+    y_is_year = (y_axis == "year")
+    records = []
+    for i in range(len(df)):
+        x_vals = x_data.iloc[i] if isinstance(x_data.iloc[i], list) else [x_data.iloc[i]]
+        y_vals = y_data.iloc[i] if isinstance(y_data.iloc[i], list) else [y_data.iloc[i]]
+        for xv in x_vals:
+            for yv in y_vals:
+                if not (xv and yv): continue
+                if x_is_year:
+                    try: xv_out = int(str(xv).strip())
+                    except: continue
+                else: xv_out = str(xv)
+                if y_is_year:
+                    try: yv_out = int(str(yv).strip())
+                    except: continue
+                else: yv_out = str(yv)
+                records.append({"x": xv_out, "y": yv_out})
+    if not records: return
+    cross_df = pd.DataFrame(records)
+    pivot_full = pd.crosstab(cross_df["y"], cross_df["x"])
+    if pivot_full.empty:
+        empty_layout = {"title": {"text": "マトリクス分析: 該当データがありません", "font": {"size": 18, "color": "#003366"}},
+                        "plot_bgcolor": "white", "paper_bgcolor": "white", "margin": {"l": 180, "r": 40, "t": 80, "b": 120},
+                        "xaxis": {"title": "", "visible": False}, "yaxis": {"title": "", "visible": False}}
+        Plotly.newPlot("chart-matrix", to_js([]), to_js(empty_layout), to_js({"responsive": True}))
+        hide_element("matrix-detail")
+        return
+    if y_axis == "year": y_sel = sorted(pivot_full.index.tolist())
+    else: y_sel = pivot_full.sum(axis=1).sort_values(ascending=False).index.tolist()[:top_n]
+    if x_axis == "year": x_sel = sorted(pivot_full.columns.tolist())
+    else:
+        sub = pivot_full.loc[y_sel] if len(y_sel) else pivot_full
+        x_sel = sub.sum(axis=0).sort_values(ascending=False).index.tolist()[:top_n]
+        if not x_sel: x_sel = pivot_full.sum(axis=0).sort_values(ascending=False).index.tolist()[:top_n]
+    pivot = pivot_full.reindex(index=y_sel, columns=x_sel, fill_value=0)
+    pivot = pivot.fillna(0).astype(int)
+    x_order = pivot.columns.tolist()
+    y_order = pivot.index.tolist()
+    axis_labels = {"year": "出願年", "applicant": "出願人", "ipc": "IPC分類", "tech_class": "技術分類", "problem_class": "課題分類", "solution_class": "解決手段分類", "status": "ステータス"}
+    x_label, y_label = axis_labels.get(x_axis, x_axis), axis_labels.get(y_axis, y_axis)
+    z_values = [[int(v) for v in row] for row in pivot.values.tolist()]
+    if chart_type == "heatmap":
+        trace = {"z": z_values, "x": pivot.columns.tolist(), "y": pivot.index.tolist(), "type": "heatmap",
+                 "colorscale": "YlGnBu", "showscale": True, "hoverongaps": False,
+                 "hovertemplate": "%{y}<br>%{x}<br>%{z}件<extra></extra>", "zmin": 0}
+        annotations = []
+        max_z = max(max(row) for row in z_values) if z_values else 1
+        for yi, y_val in enumerate(pivot.index):
+            for xi, x_val in enumerate(pivot.columns):
+                val = int(pivot.iloc[yi, xi])
+                if val > 0:
+                    ratio = (val / max_z) if max_z else 0
+                    text_color = '#111' if ratio >= 0.45 else 'white'
+                    annotations.append({"x": x_val, "y": y_val, "text": str(val), "xref": "x", "yref": "y",
+                                        "showarrow": False, "font": {"color": text_color, "size": 11}})
+        layout_extra = {"annotations": annotations}
+    else:
+        bubble_data = []
+        for yi, y_val in enumerate(pivot.index):
+            for xi, x_val in enumerate(pivot.columns):
+                count = int(pivot.iloc[yi, xi])
+                if count > 0: bubble_data.append({"x": x_val, "y": y_val, "count": count})
+        if not bubble_data: return
+        bubble_df = pd.DataFrame(bubble_data)
+        max_count = bubble_df["count"].max()
+        bubble_df["size"] = ((bubble_df["count"] / max_count) * 40 + 8).astype(int).tolist()
+        trace = {"x": bubble_df["x"].tolist(), "y": bubble_df["y"].tolist(), "mode": "markers",
+                 "marker": {"size": bubble_df["size"].tolist(), "color": bubble_df["count"].tolist(), "colorscale": "YlGnBu", "showscale": True, "colorbar": {"title": "件数"}},
+                 "text": bubble_df["count"].tolist(), "hovertemplate": "%{y}<br>%{x}<br>%{text}件<extra></extra>", "type": "scatter"}
+        layout_extra = {}
+    def _year_ticks(vals, target=10):
+        if not vals: return ([], [])
+        n = len(vals)
+        step = max(1, n // target)
+        tickvals = vals[::step]
+        if tickvals and tickvals[-1] != vals[-1]: tickvals.append(vals[-1])
+        ticktext = [str(v) for v in tickvals]
+        return (tickvals, ticktext)
+    x_tickvals, x_ticktext = ([], [])
+    y_tickvals, y_ticktext = ([], [])
+    if x_axis == 'year': x_tickvals, x_ticktext = _year_ticks(x_order, target=10)
+    if y_axis == 'year': y_tickvals, y_ticktext = _year_ticks(y_order, target=10)
+    chart_height = max(500, len(pivot.index) * 35)
+    max_y_label_len = max(len(str(y)) for y in y_order) if y_order else 10
+    max_x_label_len = max(len(str(x)) for x in x_order) if x_order else 10
+    left_margin = min(280, max(180, max_y_label_len * 8))
+    bottom_margin = min(200, max(120, max_x_label_len * 5 + 50))
+    if x_axis == 'year':
+        xr0 = (min(x_order) - 0.5) if x_order else 0
+        xr1 = (max(x_order) + 0.5) if x_order else 1
+        xaxis_cfg = {"title": {"text": x_label, "standoff": 30}, "side": "bottom", "tickangle": -45, "type": "linear",
+                     "range": [xr0, xr1], **({"tickmode": "array", "tickvals": x_tickvals, "ticktext": x_ticktext} if x_tickvals else {})}
+    else:
+        xaxis_cfg = {"title": {"text": x_label, "standoff": 30}, "side": "bottom", "tickangle": -45, "type": "category",
+                     "categoryorder": "array", "categoryarray": x_order, **({"tickmode": "array", "tickvals": x_tickvals, "ticktext": x_ticktext} if x_tickvals else {})}
+    if y_axis == 'year':
+        yr0 = (min(y_order) - 0.5) if y_order else 0
+        yr1 = (max(y_order) + 0.5) if y_order else 1
+        yaxis_cfg = {"title": {"text": y_label, "standoff": 20}, "automargin": True, "type": "linear",
+                     "range": [yr1, yr0], **({"tickmode": "array", "tickvals": y_tickvals, "ticktext": y_ticktext} if y_tickvals else {})}
+    else:
+        yaxis_cfg = {"title": {"text": y_label, "standoff": 20}, "automargin": True, "type": "category",
+                     "categoryorder": "array", "categoryarray": y_order, "autorange": "reversed",
+                     **({"tickmode": "array", "tickvals": y_tickvals, "ticktext": y_ticktext} if y_tickvals else {})}
+    layout = {"title": {"text": f"マトリクス分析: {y_label} × {x_label}", "font": {"size": 18, "color": "#003366"}},
+              "xaxis": xaxis_cfg, "yaxis": yaxis_cfg, "plot_bgcolor": "white", "paper_bgcolor": "white",
+              "margin": {"l": left_margin, "r": 60, "t": 80, "b": bottom_margin}, "height": chart_height, **layout_extra}
+    Plotly.newPlot("chart-matrix", to_js([trace]), to_js(layout), to_js({"responsive": True}))
+    chart_el = document.getElementById("chart-matrix")
+    def on_click(data):
+        if data.points and len(data.points) > 0:
+            pt = data.points[0]
+            handle_matrix_click(pt.x, pt.y)
+    chart_el.on("plotly_click", create_proxy(on_click))
+    hide_element("matrix-detail")
+
+def handle_matrix_click(x_val, y_val):
+    if state.current_matrix_data is None: return
+    df = state.current_matrix_data["df"]
+    x_axis = state.current_matrix_data["x_axis"]
+    y_axis = state.current_matrix_data["y_axis"]
+    x_data = get_axis_data(df, x_axis)
+    y_data = get_axis_data(df, y_axis)
+    indices = []
+    for i in range(len(df)):
+        x_vals = x_data.iloc[i] if isinstance(x_data.iloc[i], list) else [str(x_data.iloc[i])]
+        y_vals = y_data.iloc[i] if isinstance(y_data.iloc[i], list) else [str(y_data.iloc[i])]
+        x_vals = [str(v) for v in x_vals]
+        y_vals = [str(v) for v in y_vals]
+        if str(x_val) in x_vals and str(y_val) in y_vals:
+            indices.append(i)
+    filtered = df.iloc[indices] if indices else pd.DataFrame()
+    show_all = document.getElementById("matrix-show-all").checked
+    show_detail_table("matrix-detail", "matrix-detail-title", f"📋 {y_val} × {x_val} の公報リスト", filtered, show_all)
+
+def save_matrix(event=None):
+    Plotly.downloadImage("chart-matrix", to_js({"format": "png", "filename": "apollo_lite_matrix", "width": 1200, "height": 800}))
+
+def draw_treemap(event=None):
+    if state.df is None: return
+    mode = document.getElementById("treemap-mode").value
+    top_n = int(document.getElementById("treemap-top-n").value)
+    start_year = int(document.getElementById("treemap-start-year").value)
+    end_year = int(document.getElementById("treemap-end-year").value)
+    df = state.df[(state.df["_year"] >= start_year) & (state.df["_year"] <= end_year)]
+    if mode == "ipc":
+        col = state.col_map["ipc"]
+        ipcs = df[col].apply(lambda x: parse_ipc(x, "subclass")).explode().dropna()
+        ipcs = ipcs[ipcs != ""]
+        data = [{"section": ipc[0], "class": ipc[:3], "subclass": ipc[:4]} for ipc in ipcs if len(ipc) >= 4]
+        if not data: return
+        tree_df = pd.DataFrame(data)
+        counts = tree_df.groupby(["section", "class", "subclass"]).size().reset_index(name="count")
+        ids, labels, parents, values, colors = [], [], [], [], []
+        section_counts = counts.groupby("section")["count"].sum()
+        color_map = {"A": G10_COLORS[0], "B": G10_COLORS[1], "C": G10_COLORS[2], "D": G10_COLORS[3], "E": G10_COLORS[4], "F": G10_COLORS[5], "G": G10_COLORS[6], "H": G10_COLORS[7]}
+        for section, cnt in section_counts.items():
+            ids.append(section); labels.append(section); parents.append(""); values.append(int(cnt)); colors.append(color_map.get(section, "#888"))
+        for _, row in counts.groupby(["section", "class"])["count"].sum().reset_index().iterrows():
+            ids.append(row["class"]); labels.append(row["class"]); parents.append(row["section"]); values.append(int(row["count"])); colors.append(color_map.get(row["section"], "#888"))
+        for _, row in counts.iterrows():
+            ids.append(f"{row['subclass']}_sub"); labels.append(row["subclass"]); parents.append(row["class"]); values.append(int(row["count"])); colors.append(color_map.get(row["section"], "#888"))
+        trace = {"type": "treemap", "ids": ids, "labels": labels, "parents": parents, "values": values, "marker": {"colors": colors}, "branchvalues": "total", "hovertemplate": "<b>%{label}</b><br>%{value}件<extra></extra>"}
+        title = "IPC階層構造マップ"
+    else:
+        col = state.col_map["applicant"]
+        applicants = df[col].apply(lambda x: split_values(x, state.delimiter)).explode()
+        applicants = applicants[applicants != ""]
+        counts = applicants.value_counts().head(top_n)
+        ids, labels, parents, values = ["Total"], ["全体"], [""], [int(counts.sum())]
+        for app, cnt in counts.items():
+            ids.append(app); labels.append(app); parents.append("Total"); values.append(int(cnt))
+        trace = {"type": "treemap", "ids": ids, "labels": labels, "parents": parents, "values": values, "branchvalues": "total", "marker": {"colorscale": "Blues", "colors": values}, "hovertemplate": "<b>%{label}</b><br>%{value}件<extra></extra>"}
+        title = f"出願人シェアマップ (Top {top_n})"
+    layout = {"title": {"text": title, "font": {"size": 18, "color": "#003366"}}, "margin": {"l": 20, "r": 20, "t": 60, "b": 20}}
+    Plotly.newPlot("chart-treemap", to_js([trace]), to_js(layout), to_js({"responsive": True}))
+
+def save_treemap(event=None):
+    Plotly.downloadImage("chart-treemap", to_js({"format": "png", "filename": "apollo_lite_treemap", "width": 1200, "height": 800}))
+
+def draw_lifecycle(event=None):
+    if state.df is None: return
+    start_year = int(document.getElementById("lifecycle-start-year").value)
+    end_year = int(document.getElementById("lifecycle-end-year").value)
+    df = state.df[(state.df["_year"] >= start_year) & (state.df["_year"] <= end_year)]
+    apps_count = df.groupby("_year").size()
+    col = state.col_map["applicant"]
+    df_exp = df.copy()
+    df_exp["_apps"] = df_exp[col].apply(lambda x: split_values(x, state.delimiter))
+    df_exp = df_exp.explode("_apps")
+    df_exp = df_exp[df_exp["_apps"] != ""]
+    applicants_count = df_exp.groupby("_year")["_apps"].nunique()
+    lc = pd.DataFrame({"year": apps_count.index, "applications": apps_count.values, "applicants": applicants_count.reindex(apps_count.index, fill_value=0).values})
+    if len(lc) < 2: return
+    lc = lc.sort_values("year")
+    lc["year_label"] = lc["year"].apply(lambda y: f"'{str(int(y))[-2:]}")
+    trace_line = {"x": [int(v) for v in lc["applications"]], "y": [int(v) for v in lc["applicants"]], "type": "scatter", "mode": "lines", "line": {"shape": "spline", "smoothing": 1.3, "width": 3, "color": "#aaa"}, "opacity": 0.5, "showlegend": False, "hoverinfo": "skip"}
+    trace_markers = {"x": [int(v) for v in lc["applications"]], "y": [int(v) for v in lc["applicants"]], "type": "scatter", "mode": "markers+text", "text": lc["year_label"].tolist(), "textposition": "top center", "marker": {"size": 12, "color": [int(v) for v in lc["year"]], "colorscale": "Viridis", "showscale": True, "colorbar": {"title": "出願年"}}, "showlegend": False, "hovertemplate": "<b>%{text}</b><br>件数: %{x}<br>出願人数: %{y}<extra></extra>"}
+    layout = {"title": {"text": "技術ライフサイクルマップ", "font": {"size": 18, "color": "#003366"}}, "xaxis": {"title": "出願件数（技術活動量）", "rangemode": "tozero"}, "yaxis": {"title": "出願人数（参入プレイヤー数）", "rangemode": "tozero"}, "plot_bgcolor": "white", "paper_bgcolor": "white", "margin": {"l": 80, "r": 40, "t": 60, "b": 60}}
+    Plotly.newPlot("chart-lifecycle", to_js([trace_line, trace_markers]), to_js(layout), to_js({"responsive": True}))
+
+def save_lifecycle(event=None):
+    Plotly.downloadImage("chart-lifecycle", to_js({"format": "png", "filename": "apollo_lite_lifecycle", "width": 1000, "height": 700}))
+
+def switch_tab(event):
+    target = event.target
+    if not target.classList.contains("tab-btn") or target.disabled: return
+    tab_id = target.getAttribute("data-tab")
+    for btn in document.querySelectorAll(".tab-btn"): btn.classList.remove("active")
+    target.classList.add("active")
+    for content in document.querySelectorAll(".tab-content"): content.classList.remove("active")
+    tab_content = document.getElementById(f"tab-{tab_id}")
+    if tab_content: tab_content.classList.add("active")
+
+def handle_file_select(event):
+    files = event.target.files
+    if files.length > 0: read_file(files.item(0))
+
+def handle_drop(event):
+    event.preventDefault()
+    event.stopPropagation()
+    document.getElementById("file-upload-area").classList.remove("dragover")
+    files = event.dataTransfer.files
+    if files.length > 0:
+        f = files.item(0)
+        if f.name.endswith(".csv"): read_file(f)
+        else: set_status("file-status", "❌ CSVファイルのみ対応しています", "error")
+
+def handle_dragover(event):
+    event.preventDefault()
+    event.stopPropagation()
+    document.getElementById("file-upload-area").classList.add("dragover")
+
+def handle_dragleave(event):
+    event.preventDefault()
+    event.stopPropagation()
+    document.getElementById("file-upload-area").classList.remove("dragover")
+
+def read_file(file):
+    reader = FileReader.new()
+    def on_load(event): load_csv_data(event.target.result, file.name)
+    reader.onload = create_proxy(on_load)
+    reader.readAsText(file)
+
+def handle_upload_click(event):
+    document.getElementById("file-input").click()
+
+def on_applicant_show_all_change(event):
+    if state.current_applicant_data:
+        detail = document.getElementById("applicant-detail")
+        if detail and not detail.classList.contains("hidden"):
+            title = document.getElementById("applicant-detail-title").textContent
+            match = re.search(r"📋 (.+) の公報リスト", title)
+            if match: handle_applicant_click(match.group(1))
+
+def on_matrix_show_all_change(event):
+    if state.current_matrix_data:
+        detail = document.getElementById("matrix-detail")
+        if detail and not detail.classList.contains("hidden"):
+            title = document.getElementById("matrix-detail-title").textContent
+            match = re.search(r"📋 (.+) × (.+) の公報リスト", title)
+            if match: handle_matrix_click(match.group(2), match.group(1))
+
+def init():
+    hide_element("loading-overlay")
+    document.querySelector(".tabs").addEventListener("click", create_proxy(switch_tab))
+    document.getElementById("file-input").addEventListener("change", create_proxy(handle_file_select))
+    ua = document.getElementById("file-upload-area")
+    ua.addEventListener("click", create_proxy(handle_upload_click))
+    ua.addEventListener("drop", create_proxy(handle_drop))
+    ua.addEventListener("dragover", create_proxy(handle_dragover))
+    ua.addEventListener("dragleave", create_proxy(handle_dragleave))
+    document.getElementById("btn-apply-mapping").addEventListener("click", create_proxy(apply_mapping))
+    document.getElementById("btn-draw-timeline").addEventListener("click", create_proxy(draw_timeline))
+    document.getElementById("btn-save-timeline").addEventListener("click", create_proxy(save_timeline))
+    document.getElementById("btn-draw-applicant").addEventListener("click", create_proxy(draw_applicant))
+    document.getElementById("btn-save-applicant").addEventListener("click", create_proxy(save_applicant))
+    document.getElementById("btn-draw-ipc").addEventListener("click", create_proxy(draw_ipc))
+    document.getElementById("btn-save-ipc").addEventListener("click", create_proxy(save_ipc))
+    document.getElementById("btn-draw-matrix").addEventListener("click", create_proxy(draw_matrix))
+    document.getElementById("btn-save-matrix").addEventListener("click", create_proxy(save_matrix))
+    document.getElementById("btn-draw-treemap").addEventListener("click", create_proxy(draw_treemap))
+    document.getElementById("btn-save-treemap").addEventListener("click", create_proxy(save_treemap))
+    document.getElementById("btn-draw-lifecycle").addEventListener("click", create_proxy(draw_lifecycle))
+    document.getElementById("btn-save-lifecycle").addEventListener("click", create_proxy(save_lifecycle))
+    document.getElementById("applicant-show-all").addEventListener("change", create_proxy(on_applicant_show_all_change))
+    document.getElementById("matrix-show-all").addEventListener("change", create_proxy(on_matrix_show_all_change))
+
+init()
+    </script>
+</body>
+</html>
